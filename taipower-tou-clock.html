@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>台電時間電價・即時時段面板</title>
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#111722; --panel-2:#0e131c;
+    --grid:#1e2733; --grid-soft:#161d27;
+    --txt:#e6edf3; --txt-dim:#8b97a5; --txt-faint:#5a6675;
+    --now:#38d2ff;
+    --c-off:#2dd4a7;     /* 離峰 */
+    --c-satoff:#38bdf8;  /* 週六半尖峰 */
+    --c-half:#f5a623;    /* 半尖峰 */
+    --c-peak:#f0533f;    /* 尖峰 */
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Roboto Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,"Segoe UI","Noto Sans TC",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:transparent}
+  body{font-family:var(--sans);color:var(--txt);padding:18px;-webkit-font-smoothing:antialiased}
+  .frame{max-width:780px;margin:0 auto;
+    background:radial-gradient(1200px 400px at 80% -10%,rgba(56,210,255,.06),transparent 60%),var(--bg);
+    border:1px solid var(--grid);border-radius:14px;overflow:hidden}
+
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;
+    padding:18px 20px 16px;border-bottom:1px solid var(--grid);
+    background:linear-gradient(180deg,var(--panel),var(--panel-2))}
+  .brand{display:flex;flex-direction:column;gap:4px}
+  .brand .eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--txt-faint);font-weight:600}
+  .brand h1{font-size:15px;font-weight:600}
+  .clockwrap{text-align:right;display:flex;flex-direction:column;gap:2px}
+  .clock{font-family:var(--mono);font-size:40px;line-height:1;font-weight:600;
+    font-variant-numeric:tabular-nums;color:var(--txt);text-shadow:0 0 18px rgba(56,210,255,.25)}
+  .clock .sec{color:var(--now);font-size:26px}
+  .datemeta{font-family:var(--mono);font-size:12px;color:var(--txt-dim);font-variant-numeric:tabular-nums}
+  .daytag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;font-size:11px;
+    font-weight:600;border:1px solid var(--grid);color:var(--txt-dim)}
+
+  /* control bar */
+  .controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    padding:10px 20px;border-bottom:1px solid var(--grid);background:var(--panel-2)}
+  .toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none;
+    font-size:12px;color:var(--txt-dim)}
+  .toggle .sw{width:34px;height:19px;border-radius:999px;background:#242e3a;position:relative;
+    transition:background .18s;border:1px solid var(--grid)}
+  .toggle .sw::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;
+    background:#6b7787;transition:transform .18s,background .18s}
+  .toggle.on .sw{background:rgba(240,83,63,.35)}
+  .toggle.on .sw::after{transform:translateX(15px);background:var(--c-peak)}
+  .toggle b{color:var(--txt);font-weight:600}
+  .hint{font-size:11px;color:var(--txt-faint);font-family:var(--mono)}
+
+  .channels{padding:4px 20px 18px}
+  .group-hd{display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;
+    padding:14px 0 8px;margin-top:6px;border-bottom:1px solid var(--grid);
+    font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--txt-faint);font-weight:700}
+  .group-hd .chev{transition:transform .2s;font-size:9px;color:var(--txt-dim)}
+  .group-hd.collapsed .chev{transform:rotate(-90deg)}
+  .group-hd .cnt{margin-left:auto;font-family:var(--mono);font-size:10px;letter-spacing:0;
+    color:var(--txt-faint);text-transform:none}
+  .group-body.collapsed{display:none}
+
+  .channel{padding:15px 0 13px;border-bottom:1px solid var(--grid-soft)}
+  .channel:last-child{border-bottom:none}
+  .chan-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+  .chan-name{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+  .chan-name .label{font-size:14px;font-weight:600}
+  .chan-name .sub{font-size:10px;color:var(--txt-faint);font-family:var(--mono)}
+  .seasontag{font-size:10px;font-family:var(--mono);padding:1px 6px;border-radius:5px;
+    border:1px solid var(--grid);color:var(--txt-dim)}
+
+  .nowbox{display:flex;align-items:center;gap:9px;padding:5px 11px;border-radius:9px;
+    border:1px solid var(--grid);background:var(--panel-2)}
+  .nowbox .dot{width:9px;height:9px;border-radius:50%;box-shadow:0 0 10px currentColor;flex:none}
+  .nowbox .ntext{display:flex;flex-direction:column;line-height:1.25}
+  .nowbox .nperiod{font-size:13px;font-weight:700}
+  .nowbox .nrate{font-family:var(--mono);font-size:11px;color:var(--txt-dim)}
+  .nowbox .nrate b{color:var(--txt);font-weight:600}
+
+  .timeline{position:relative;height:30px;border-radius:7px;overflow:hidden;
+    background:var(--panel-2);border:1px solid var(--grid)}
+  .seg{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:10px;color:rgba(0,0,0,.62);font-weight:700;overflow:hidden;
+    white-space:nowrap;transition:filter .2s,opacity .2s}
+  .seg.dim{opacity:.4}
+  .seg.active{filter:brightness(1.12) saturate(1.1)}
+  .seg.active::after{content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 2px rgba(255,255,255,.85)}
+  .nowline{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--now);
+    box-shadow:0 0 8px 1px var(--now);z-index:5;pointer-events:none}
+  .nowline::before{content:"";position:absolute;top:-3px;left:-3px;width:8px;height:8px;border-radius:50%;
+    background:var(--now);box-shadow:0 0 8px 1px var(--now)}
+  .axis{position:relative;height:13px;margin-top:3px}
+  .axis span{position:absolute;transform:translateX(-50%);font-family:var(--mono);font-size:9px;color:var(--txt-faint);top:0}
+
+  footer{padding:13px 20px 16px;border-top:1px solid var(--grid);
+    display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  .legend{display:flex;gap:14px;flex-wrap:wrap}
+  .lg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--txt-dim)}
+  .lg i{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .note{font-size:10px;color:var(--txt-faint);font-family:var(--mono);text-align:right}
+
+  @media (max-width:520px){
+    body{padding:10px}
+    .clock{font-size:32px}.clock .sec{font-size:20px}
+    .seg{font-size:9px}
+  }
+</style>
+</head>
+<body>
+<div class="frame">
+  <header>
+    <div class="brand">
+      <span class="eyebrow">Taipower · Time-of-Use</span>
+      <h1>台電時間電價・即時時段面板</h1>
+    </div>
+    <div class="clockwrap">
+      <div class="clock" id="clock">--:--<span class="sec">:--</span></div>
+      <div class="datemeta" id="datemeta">—</div>
+    </div>
+  </header>
+
+  <div class="controls">
+    <div class="toggle" id="peakToggle">
+      <span class="sw"></span>
+      <span>夏月<b>指定尖峰日</b>（影響三段式可變動）</span>
+    </div>
+    <span class="hint" id="peakHint">關閉＝指定以外日期</span>
+  </div>
+
+  <div class="channels" id="channels"></div>
+
+  <footer>
+    <div class="legend">
+      <span class="lg"><i style="background:var(--c-off)"></i>離峰</span>
+      <span class="lg"><i style="background:var(--c-satoff)"></i>週六半尖峰</span>
+      <span class="lg"><i style="background:var(--c-half)"></i>半尖峰</span>
+      <span class="lg"><i style="background:var(--c-peak)"></i>尖峰</span>
+    </div>
+    <div class="note">費率：114/10/1 起實施 · 單位 元/度</div>
+  </footer>
+</div>
+
+<script>
+/* =========================================================================
+   [每年需維護] 離峰日 — 整日視為離峰
+   依台電電價表「離峰日」定義（明列節日 + 全部週日）。以下為 2026 日期。
+   ★ 農曆假日(春節/端午/中秋)為換算值，請對照台電當年度公告核對；
+   ★ 2026 年台灣新增教師節/光復節/行憲紀念日，是否列入離峰日以台電公告為準。
+   格式 'MM-DD'
+   ========================================================================= */
+const OFF_PEAK_DAYS = [
+  '01-01',                                          // 開國紀念日
+  '02-16','02-17','02-18','02-19','02-20','02-21',  // 春節 除夕~初五 (農曆換算，請核對)
+  '02-28',                                          // 和平紀念日
+  '04-04',                                          // 兒童節
+  '04-05',                                          // 民族掃墓節(清明)
+  '05-01',                                          // 勞動節
+  '06-19',                                          // 端午節 (農曆換算，請核對)
+  '09-25',                                          // 中秋節 (農曆換算，請核對)
+  '10-10'                                           // 國慶日
+];
+
+const COLOR={'離峰':'var(--c-off)','週六半尖峰':'var(--c-satoff)','半尖峰':'var(--c-half)','尖峰':'var(--c-peak)'};
+
+/* 快捷：常見的「非夏月平日/週六」樣式 (三段/二段共用結構，僅費率不同) */
+// b(期別,起,迄,費率)
+const B=(p,s,e,r)=>({p,s,e,r});
+
+/* =========================================================================
+   電價時段資料 (114/10/1 起實施)。summer:各type夏月起訖[月,日]
+   ========================================================================= */
+const SCHEDULES=[
+/* ---------- 特高壓 ---------- */
+ {group:'特高壓 EHV', label:'二段式', sub:'2-stage', summer:{from:[5,16],to:[10,15]},
+  bands:{summer:{weekday:[B('離峰',0,9,2.55),B('尖峰',9,24,6.17)],
+                 sat:[B('離峰',0,9,2.55),B('週六半尖峰',9,24,2.73)],
+                 sun:[B('離峰',0,24,2.55)]},
+         nonsummer:{weekday:[B('離峰',0,6,2.28),B('尖峰',6,11,5.79),B('離峰',11,14,2.28),B('尖峰',14,24,5.79)],
+                 sat:[B('離峰',0,6,2.28),B('週六半尖峰',6,11,2.48),B('離峰',11,14,2.28),B('週六半尖峰',14,24,2.48)],
+                 sun:[B('離峰',0,24,2.28)]}}},
+
+ {group:'特高壓 EHV', label:'三段式（尖峰固定）', sub:'3-stage fixed', summer:{from:[5,16],to:[10,15]},
+  bands:{summer:{weekday:[B('離峰',0,9,2.40),B('半尖峰',9,16,5.38),B('尖峰',16,22,8.69),B('半尖峰',22,24,5.38)],
+                 sat:[B('離峰',0,9,2.40),B('週六半尖峰',9,24,2.50)],
+                 sun:[B('離峰',0,24,2.40)]},
+         nonsummer:{weekday:[B('離峰',0,6,2.18),B('半尖峰',6,11,5.03),B('離峰',11,14,2.18),B('半尖峰',14,24,5.03)],
+                 sat:[B('離峰',0,6,2.18),B('週六半尖峰',6,11,2.31),B('離峰',11,14,2.18),B('週六半尖峰',14,24,2.31)],
+                 sun:[B('離峰',0,24,2.18)]}}},
+
+ {group:'特高壓 EHV', label:'三段式（尖峰可變動）', sub:'3-stage variable', variable:true, summer:{from:[5,16],to:[10,15]},
+  bands:{summer:{weekday:[B('離峰',0,9,2.40),B('半尖峰',9,24,5.38)],
+                 weekday_peak:[B('離峰',0,9,2.40),B('半尖峰',9,16,5.38),B('尖峰',16,22,17.05),B('半尖峰',22,24,5.38)],
+                 sat:[B('離峰',0,9,2.40),B('週六半尖峰',9,24,2.50)],
+                 sun:[B('離峰',0,24,2.40)]},
+         nonsummer:{weekday:[B('離峰',0,6,2.18),B('半尖峰',6,11,5.03),B('離峰',11,14,2.18),B('半尖峰',14,24,5.03)],
+                 sat:[B('離峰',0,6,2.18),B('週六半尖峰',6,11,2.31),B('離峰',11,14,2.18),B('週六半尖峰',14,24,2.31)],
+                 sun:[B('離峰',0,24,2.18)]}}},
+
+ {group:'特高壓 EHV', label:'批次生產', sub:'batch', summer:{from:[5,16],to:[10,15]},
+  bands:{summer:{weekday:[B('離峰',0,15.5,2.99),B('尖峰',15.5,21.5,11.44),B('離峰',21.5,24,2.99)],
+                 sat:[B('離峰',0,15.5,2.99),B('週六半尖峰',15.5,21.5,3.20),B('離峰',21.5,24,2.99)],
+                 sun:[B('離峰',0,24,2.99)]},
+         nonsummer:{weekday:[B('離峰',0,15.5,2.67),B('尖峰',15.5,21.5,10.80),B('離峰',21.5,24,2.67)],
+                 sat:[B('離峰',0,15.5,2.67),B('週六半尖峰',15.5,21.5,2.89),B('離峰',21.5,24,2.67)],
+                 sun:[B('離峰',0,24,2.67)]}}},
+
+/* ---------- 高壓 ---------- */
+ {group:'高壓 HV', label:'二段式', sub:'2-stage', summer:{from:[5,16],to:[10,15]},
+  bands:{summer:{weekday:[B('離峰',0,9,2.71),B('尖峰',9,24,6.75)],
+                 sat:[B('離峰',0,9,2.71),B('週六半尖峰',9,24,2.77)],
+                 sun:[B('離峰',0,24,2.71)]},
+         nonsummer:{weekday:[B('離峰',0,6,2.46),B('尖峰',6,11,6.37),B('離峰',11,14,2.46),B('尖峰',14,24,6.37)],
+                 sat:[B('離峰',0,6,2.46),B('週六半尖峰',6,11,2.54),B('離峰',11,14,2.46),B('週六半尖峰',14,24,2.54)],
+                 sun:[B('離峰',0,24,2.46)]}}},
+
+ {group:'高壓 HV', label:'三段式（尖峰固定）', sub:'3-stage fixed', summer:{from:[5,16],to:[10,15]},
+  bands:{summer:{weekday:[B('離峰',0,9,2.53),B('半尖峰',9,16,5.85),B('尖峰',16,22,9.39),B('半尖峰',22,24,5.85)],
+                 sat:[B('離峰',0,9,2.53),B('週六半尖峰',9,24,2.60)],
+                 sun:[B('離峰',0,24,2.53)]},
+         nonsummer:{weekday:[B('離峰',0,6,2.32),B('半尖峰',6,11,5.47),B('離峰',11,14,2.32),B('半尖峰',14,24,5.47)],
+                 sat:[B('離峰',0,6,2.32),B('週六半尖峰',6,11,2.41),B('離峰',11,14,2.32),B('週六半尖峰',14,24,2.41)],
+                 sun:[B('離峰',0,24,2.32)]}}},
+
+ {group:'高壓 HV', label:'三段式（尖峰可變動）', sub:'3-stage variable', variable:true, summer:{from:[5,16],to:[10,15]},
+  bands:{summer:{weekday:[B('離峰',0,9,2.53),B('半尖峰',9,24,5.85)],
+                 weekday_peak:[B('離峰',0,9,2.53),B('半尖峰',9,16,5.85),B('尖峰',16,22,18.33),B('半尖峰',22,24,5.85)],
+                 sat:[B('離峰',0,9,2.53),B('週六半尖峰',9,24,2.60)],
+                 sun:[B('離峰',0,24,2.53)]},
+         nonsummer:{weekday:[B('離峰',0,6,2.32),B('半尖峰',6,11,5.47),B('離峰',11,14,2.32),B('半尖峰',14,24,5.47)],
+                 sat:[B('離峰',0,6,2.32),B('週六半尖峰',6,11,2.41),B('離峰',11,14,2.32),B('週六半尖峰',14,24,2.41)],
+                 sun:[B('離峰',0,24,2.32)]}}},
+
+ {group:'高壓 HV', label:'批次生產', sub:'batch', summer:{from:[5,16],to:[10,15]},
+  bands:{summer:{weekday:[B('離峰',0,15.5,3.18),B('尖峰',15.5,21.5,12.47),B('離峰',21.5,24,3.18)],
+                 sat:[B('離峰',0,15.5,3.18),B('週六半尖峰',15.5,21.5,3.26),B('離峰',21.5,24,3.18)],
+                 sun:[B('離峰',0,24,3.18)]},
+         nonsummer:{weekday:[B('離峰',0,15.5,2.88),B('尖峰',15.5,21.5,11.79),B('離峰',21.5,24,2.88)],
+                 sat:[B('離峰',0,15.5,2.88),B('週六半尖峰',15.5,21.5,3.00),B('離峰',21.5,24,2.88)],
+                 sun:[B('離峰',0,24,2.88)]}}},
+
+/* ---------- 充電站 ---------- */
+ {group:'充電站 EV', label:'電動車充換電（低壓）', sub:'LV · 夏月6/1–9/30', summer:{from:[6,1],to:[9,30]},
+  bands:{summer:{weekday:[B('離峰',0,16,3.05),B('尖峰',16,22,12.47),B('離峰',22,24,3.05)],
+                 sat:[B('離峰',0,24,3.05)], sun:[B('離峰',0,24,3.05)]},
+         nonsummer:{weekday:[B('離峰',0,15,2.90),B('尖峰',15,21,12.14),B('離峰',21,24,2.90)],
+                 sat:[B('離峰',0,24,2.90)], sun:[B('離峰',0,24,2.90)]}}},
+
+ {group:'充電站 EV', label:'電動車充換電（高壓）', sub:'HV＝低壓×95% (換算值)', summer:{from:[6,1],to:[9,30]},
+  bands:{summer:{weekday:[B('離峰',0,16,2.90),B('尖峰',16,22,11.85),B('離峰',22,24,2.90)],
+                 sat:[B('離峰',0,24,2.90)], sun:[B('離峰',0,24,2.90)]},
+         nonsummer:{weekday:[B('離峰',0,15,2.76),B('尖峰',15,21,11.53),B('離峰',21,24,2.76)],
+                 sat:[B('離峰',0,24,2.76)], sun:[B('離峰',0,24,2.76)]}}}
+];
+
+/* ---- 工具 ---- */
+const state={designatedPeak:false};
+const pad=n=>String(n).padStart(2,'0');
+const fmtHM=h=>{const hh=Math.floor(h),mm=Math.round((h-hh)*60);return pad(hh)+':'+pad(mm);};
+const isOffPeakDay=d=>OFF_PEAK_DAYS.includes(pad(d.getMonth()+1)+'-'+pad(d.getDate()));
+function inSummer(d,s){const cur=(d.getMonth()+1)*100+d.getDate();
+  return cur>=s.summer.from[0]*100+s.summer.from[1] && cur<=s.summer.to[0]*100+s.summer.to[1];}
+function dayKind(d){if(isOffPeakDay(d))return'sun';const w=d.getDay();return w===0?'sun':w===6?'sat':'weekday';}
+function todayBands(sched,d){
+  const season=inSummer(d,sched)?'summer':'nonsummer';
+  const kind=dayKind(d);
+  if(sched.variable && season==='summer' && kind==='weekday' && state.designatedPeak)
+    return sched.bands.summer.weekday_peak;
+  return sched.bands[season][kind];
+}
+
+/* ---- 建立 DOM ---- */
+const channelsEl=document.getElementById('channels');
+const refs=[];
+function buildChannels(){
+  channelsEl.innerHTML=''; refs.length=0;
+  const now=new Date();
+  const groups=[...new Set(SCHEDULES.map(s=>s.group))];
+
+  groups.forEach(gName=>{
+    const items=SCHEDULES.filter(s=>s.group===gName);
+    const hd=document.createElement('div'); hd.className='group-hd';
+    hd.innerHTML=`<span class="chev">▼</span><span>${gName}</span><span class="cnt">${items.length} 種</span>`;
+    const body=document.createElement('div'); body.className='group-body';
+    hd.onclick=()=>{hd.classList.toggle('collapsed');body.classList.toggle('collapsed');};
+    channelsEl.appendChild(hd); channelsEl.appendChild(body);
+
+    items.forEach(sched=>{
+      const summer=inSummer(now,sched);
+      const bands=todayBands(sched,now);
+      const ch=document.createElement('div'); ch.className='channel';
+      ch.innerHTML=`
+        <div class="chan-head">
+          <div class="chan-name"><span class="label">${sched.label}</span>
+            <span class="sub">${sched.sub}</span>
+            <span class="seasontag">${summer?'夏月':'非夏月'}</span></div>
+          <div class="nowbox"><span class="dot"></span>
+            <span class="ntext"><span class="nperiod"></span><span class="nrate"></span></span></div>
+        </div>
+        <div class="timeline"></div><div class="axis"></div>`;
+      const tl=ch.querySelector('.timeline'); const segEls=[];
+      bands.forEach(b=>{
+        const seg=document.createElement('div'); seg.className='seg';
+        seg.style.left=(b.s/24*100)+'%'; seg.style.width=((b.e-b.s)/24*100)+'%';
+        seg.style.background=COLOR[b.p];
+        seg.textContent=(b.e-b.s)>=2?b.p:'';
+        seg.title=`${b.p} ${fmtHM(b.s)}–${fmtHM(b.e)} · ${b.r.toFixed(2)}元`;
+        tl.appendChild(seg); segEls.push(seg);
+      });
+      const nl=document.createElement('div'); nl.className='nowline'; tl.appendChild(nl);
+      const axis=ch.querySelector('.axis');
+      [0,3,6,9,12,15,18,21,24].forEach(h=>{const s=document.createElement('span');
+        s.style.left=(h/24*100)+'%'; s.textContent=pad(h); axis.appendChild(s);});
+      body.appendChild(ch);
+      refs.push({sched,bands,segEls,nowline:nl,dot:ch.querySelector('.dot'),
+        period:ch.querySelector('.nperiod'),rate:ch.querySelector('.nrate')});
+    });
+  });
+}
+
+/* ---- 每秒更新 ---- */
+let lastKey='';
+function tick(){
+  const d=new Date();
+  const key=d.toDateString()+'|'+state.designatedPeak;
+  if(key!==lastKey){ buildChannels(); lastKey=key; }
+
+  document.getElementById('clock').innerHTML=`${pad(d.getHours())}:${pad(d.getMinutes())}<span class="sec">:${pad(d.getSeconds())}</span>`;
+  const wk=['日','一','二','三','四','五','六'][d.getDay()];
+  const kind=dayKind(d);
+  const kindTag=kind==='weekday'?'平日':kind==='sat'?'週六':(isOffPeakDay(d)?'離峰日':'週日');
+  document.getElementById('datemeta').innerHTML=
+    `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} (週${wk})<span class="daytag">${kindTag}</span>`;
+
+  const hf=d.getHours()+d.getMinutes()/60+d.getSeconds()/3600;
+  refs.forEach(r=>{
+    r.nowline.style.left=(hf/24*100)+'%';
+    let cur=null;
+    r.bands.forEach((b,i)=>{const on=(hf>=b.s&&hf<b.e);
+      r.segEls[i].classList.toggle('active',on); r.segEls[i].classList.toggle('dim',!on);
+      if(on)cur=b;});
+    if(cur){const col=COLOR[cur.p];
+      r.dot.style.color=col; r.period.textContent=cur.p; r.period.style.color=col;
+      r.rate.innerHTML=`<b>${cur.r.toFixed(2)}</b> 元/度 · 至 ${fmtHM(cur.e)}`;}
+  });
+}
+
+/* ---- 指定尖峰日開關 ---- */
+const pt=document.getElementById('peakToggle');
+pt.onclick=()=>{
+  state.designatedPeak=!state.designatedPeak;
+  pt.classList.toggle('on',state.designatedPeak);
+  document.getElementById('peakHint').textContent=
+    state.designatedPeak?'開啟＝台電指定之30天尖峰日':'關閉＝指定以外日期';
+  buildChannels(); lastKey=''; tick();
+};
+
+buildChannels(); tick(); setInterval(tick,1000);
+</script>
+</body>
+</html>
